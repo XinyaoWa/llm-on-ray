@@ -49,6 +49,7 @@ from pyrecdp.primitives.operations import (
 )
 from pyrecdp.primitives.document.reader import _default_file_readers
 from pyrecdp.core.cache_utils import RECDP_MODELS_CACHE
+from ui.game_md import get_game_md
 
 if not os.environ['RECDP_CACHE_HOME']:
     os.environ['RECDP_CACHE_HOME'] = os.getcwd()
@@ -123,6 +124,7 @@ class ChatBotUI:
         repo_code_path: str,
         default_data_path: str,
         default_rag_path: str,
+        default_rag_game_path: str,
         config: dict,
         head_node_ip: str,
         node_port: str,
@@ -158,6 +160,7 @@ class ChatBotUI:
         self.finetune_actor = None
         self.finetune_status = False
         self.default_rag_path = default_rag_path
+        self.default_rag_game_path = default_rag_game_path
         self.embedding_model_name = "sentence-transformers/all-mpnet-base-v2"
         self._init_ui()
 
@@ -235,6 +238,23 @@ class ChatBotUI:
                     output = ""
             yield output
 
+    def post_outstr(self, outputs, history, time_start, new_token_latency_prompt, token_num):
+        llm_outstr = ""
+        for output in outputs:
+            if len(output) != 0:
+                time_end = time.time()
+                if isinstance(output, str):
+                    history[-1][1] += output
+                    history[-1][1] = self.process_tool.convert_output(history[-1][1])
+                else:
+                    tmpstr = convert_openai_output(output)
+                    history[-1][1] += tmpstr
+                    llm_outstr += tmpstr
+                time_spend = round(time_end - time_start, 3)
+                token_num += 1
+                new_token_latency = new_token_latency_prompt.format_map({"time_spend":time_spend, "token_num":token_num})
+                yield [llm_outstr, history, new_token_latency]
+
     def bot(
         self,
         history,
@@ -246,15 +266,38 @@ class ChatBotUI:
         Top_k,
         model_name=None,
         enhance_knowledge=None,
+        game_selector = False,
+        game_detail=False
     ):
         request_url = model_endpoint if model_endpoint != "" else deploy_model_endpoint
         simple_api = is_simple_api(request_url, model_name)
         prompt = self.history_to_messages(history)
         
-        if enhance_knowledge:
-            prompt = self.add_knowledge(prompt, enhance_knowledge)
+        time_start = time.time()     
+        if history[-1][1] is None:
+            history[-1][1] = ""   
+        new_token_latency_prompt = """
+                            | <!-- --> | <!-- --> |
+                            |---|---|
+                            | Total Latency [s] | {time_spend} |
+                            | Tokens | {token_num} |"""
+        if game_selector:
+            cur = os.path.dirname(os.path.abspath(__file__))
+            prompt_game = open(os.path.join(cur, "prompt_game", "prompt_mul")).read()
+            if enhance_knowledge:
+                if game_detail:
+                    history[-1][1] += "=== RAG Output===\n" + enhance_knowledge + "\n=== LLM Output===\n"
+                    new_token_latency = new_token_latency_prompt.format_map({"time_spend":round(time.time() - time_start, 3), "token_num":0})
+                    yield [history, new_token_latency]
+                prompt[-1]['content'] = prompt_game + enhance_knowledge+ "\n##Output##\n"
+            else:
+                prompt_game_chat = open(os.path.join(cur, "prompt_game", "prompt_chat")).read()
+                prompt[-1]['content'] = prompt_game_chat + prompt[-1]['content']+ "\n##Output##\n"
+            prompt = [prompt[-1]]
+        else:
+            if enhance_knowledge:
+                prompt = self.add_knowledge(prompt, enhance_knowledge)
         
-        time_start = time.time()
         token_num = 0
         config = {
             "max_new_tokens": Max_new_tokens,
@@ -265,24 +308,41 @@ class ChatBotUI:
         }
         outputs = self.model_generate(prompt=prompt, request_url=request_url, model_name=model_name, config=config, simple_api=simple_api)
 
-        if history[-1][1] is None:
-            history[-1][1] = ""
-        for output in outputs:
-            if len(output) != 0:
-                time_end = time.time()
-                if isinstance(output, str):
-                    history[-1][1] += output
-                    history[-1][1] = self.process_tool.convert_output(history[-1][1])
-                else:
-                    history[-1][1] += convert_openai_output(output)
-                time_spend = round(time_end - time_start, 3)
-                token_num += 1
-                new_token_latency = f"""
-                                    | <!-- --> | <!-- --> |
-                                    |---|---|
-                                    | Total Latency [s] | {time_spend} |
-                                    | Tokens | {token_num} |"""
+        if enhance_knowledge is None and game_selector and game_detail:
+            history[-1][1] += "=== ChatLLM Output===\n"
+            new_token_latency = new_token_latency_prompt.format_map({"time_spend":round(time.time() - time_start, 3), "token_num":0})
+            yield [history, new_token_latency]
+
+        results = self.post_outstr(outputs, history, time_start, new_token_latency_prompt, token_num)
+        for result in results:
+            llm_outstr = result[0]
+            history = result[1]
+            if not (game_selector and not game_detail):
+                yield [history, result[2]]
+        
+        if game_selector and not enhance_knowledge:
+            if game_detail:
+                history[-1][1] += "\n=== LLM Output===\n"
+                new_token_latency = new_token_latency_prompt.format_map({"time_spend":round(time.time() - time_start, 3), "token_num":token_num})
                 yield [history, new_token_latency]
+            prompt[-1]['content'] = prompt_game + llm_outstr+ "\n##Output##\n"
+            prompt = [prompt[-1]]
+            outputs = self.model_generate(prompt=prompt, request_url=request_url, model_name=model_name, config=config, simple_api=simple_api)
+            
+            results = self.post_outstr(outputs, history, time_start, new_token_latency_prompt,token_num)
+            for result in results:
+                llm_outstr = result[0]
+                history = result[1]
+                yield [history, result[2]]
+
+        if game_selector:
+            table_md = get_game_md(llm_outstr)
+            if game_detail:
+                history[-1][1] += table_md    
+            else:
+                history[-1][1] = table_md
+            new_token_latency = new_token_latency_prompt.format_map({"time_spend":round(time.time() - time_start, 3), "token_num":token_num})
+            yield [history, new_token_latency]
 
     def bot_test(
         self,
@@ -333,19 +393,21 @@ class ChatBotUI:
         Top_p,
         Top_k,
         rag_selector,
+        game_selector,
+        game_detail,
         rag_path,
         returned_k,
         model_name=None
     ):
         enhance_knowledge = None
-        if os.path.isabs(rag_path):
-            tmp_folder = os.getcwd()
-            load_dir = os.path.join(tmp_folder, rag_path)
-        else:
-            load_dir = rag_path
-        if not os.path.exists(load_dir):
-            raise gr.Error("The specified path does not exist")
         if rag_selector:
+            if os.path.isabs(rag_path):
+                tmp_folder = os.getcwd()
+                load_dir = os.path.join(tmp_folder, rag_path)
+            else:
+                load_dir = rag_path
+            if not os.path.exists(load_dir):
+                raise gr.Error("The specified path does not exist")
             question = history[-1][0]
             print("history: ", history)
             print("question: ", question)
@@ -359,9 +421,13 @@ class ChatBotUI:
 
             vectorstore = FAISS.load_local(load_dir, self.embeddings, index_name="knowledge_db")
             sim_res = vectorstore.similarity_search(question, k=int(returned_k))
+            
             enhance_knowledge = ""
             for doc in sim_res:
-                enhance_knowledge = enhance_knowledge + doc.page_content + ". "
+                if game_selector:
+                    enhance_knowledge += doc.page_content.split("gem_id:")[1].replace("\n", "") + "\n"
+                else:
+                    enhance_knowledge = enhance_knowledge + doc.page_content + ". "
 
         bot_generator = self.bot(
             history,
@@ -373,6 +439,8 @@ class ChatBotUI:
             Top_k,
             model_name=model_name,
             enhance_knowledge=enhance_knowledge,
+            game_selector=game_selector,
+            game_detail=game_detail,
         )
         for output in bot_generator:
             yield output
@@ -573,6 +641,7 @@ class ChatBotUI:
         finetune_config["General"]["base_model"] = origin_model_path
         finetune_config["Training"]["epochs"] = num_epochs
         finetune_config["General"]["output_dir"] = finetuned_model_path
+        finetune_config["General"]["tracking_dir"] = os.path.join(finetuned_model_path,"tracking")
         finetune_config["General"]["config"]["trust_remote_code"] = True
         if finetuned_checkpoint_path:
             finetune_config["General"]["checkpoint_dir"] = finetuned_checkpoint_path
@@ -848,11 +917,13 @@ class ChatBotUI:
         else:
             return gr.Textbox.update(visible=False), gr.File.update(visible=True)
 
-    def set_rag_default_path(self, selector, rag_path):
-        if rag_path:
+    def set_rag_default_path(self, selector, game_selector, rag_path):
+        if rag_path and rag_path != self.default_rag_path and rag_path != self.default_rag_game_path:
             return rag_path
         if selector is False:
             return None
+        elif game_selector:
+            return self.default_rag_game_path
         else:
             return self.default_rag_path
 
@@ -1301,6 +1372,13 @@ class ChatBotUI:
                     with gr.Column(scale=0.2, min_width=100):
                         regenerate_btn = gr.Button("Regenerate", min_width=0)
 
+                with gr.Accordion("Game Recommendation", open=False, visible=True):
+                    with gr.Row():
+                        with gr.Column(scale=0.2, min_width=100):
+                            game_selector = gr.Checkbox(label="Enable Game recommendation", min_width=0)
+                        with gr.Column(scale=0.2, min_width=100):
+                            game_detail = gr.Checkbox(label="Detail Result", min_width=0)
+
                 with gr.Tab("Dialogue"):
                     chatbot_rag = gr.Chatbot(
                         elem_id="chatbot",
@@ -1506,7 +1584,8 @@ class ChatBotUI:
             )
 
             clear_btn_rag.click(self.clear, None, [chatbot_rag, latency_status_rag], queue=False)
-            rag_selector.select(self.set_rag_default_path, [rag_selector, rag_path], rag_path)
+            rag_selector.select(self.set_rag_default_path, [rag_selector, game_selector, rag_path], rag_path)
+            game_selector.select(self.set_rag_default_path, [rag_selector, game_selector, rag_path], rag_path)
             msg_rag.submit(
                 self.user, [msg_rag, chatbot_rag], [msg_rag, chatbot_rag], queue=False
             ).then(
@@ -1520,6 +1599,8 @@ class ChatBotUI:
                     Top_p_rag,
                     Top_k_rag,
                     rag_selector,
+                    game_selector,
+                    game_detail,
                     rag_path,
                     returned_k,
                     rag_model_name,
@@ -1539,6 +1620,8 @@ class ChatBotUI:
                     Top_p_rag,
                     Top_k_rag,
                     rag_selector,
+                    game_selector,
+                    game_detail,
                     rag_path,
                     returned_k,
                     rag_model_name
@@ -1644,6 +1727,12 @@ if __name__ == "__main__":
         help="The path of vectorstore used by RAG.",
     )
     parser.add_argument(
+        "--default_rag_game_path",
+        default="./data/vectordb",
+        type=str,
+        help="The path of vectorstore used by RAG.",
+    )
+    parser.add_argument(
         "--node_port", default="22", type=str, help="The node port that ssh connects."
     )
     parser.add_argument(
@@ -1677,7 +1766,8 @@ if __name__ == "__main__":
     from finetune.finetune import get_accelerate_environment_variable
 
     finetune_config: Dict[str, Any] = {
-        "General": {"config": {}},
+        "General": {"config": {},
+                    "enable_gradient_checkpointing": False},
         "Dataset": {"validation_file": None, "validation_split_percentage": 0},
         "Training": {
             "optimizer": "AdamW",
@@ -1687,6 +1777,7 @@ if __name__ == "__main__":
             "num_training_workers": 2,
             "resources_per_worker": {"CPU": 24},
             "accelerate_mode": "CPU_DDP",
+            "mixed_precision": "bf16",
         },
         "failure_config": {"max_failures": 5},
     }
@@ -1716,6 +1807,7 @@ if __name__ == "__main__":
     finetune_model_path = args.finetune_model_path
     finetune_checkpoint_path = args.finetune_checkpoint_path
     default_rag_path = args.default_rag_path
+    default_rag_game_path = args.default_rag_game_path
 
     initial_model_list = {k: all_models[k] for k in sorted(all_models.keys())}
     ui = ChatBotUI(
@@ -1726,6 +1818,7 @@ if __name__ == "__main__":
         repo_path,
         default_data_path,
         default_rag_path,
+        default_rag_game_path,
         finetune_config,
         head_node_ip,
         args.node_port,

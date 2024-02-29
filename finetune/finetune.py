@@ -163,6 +163,7 @@ def train_func(config: Dict[str, Any]):
                 "per_device_eval_batch_size": config["Training"]["batch_size"],
                 "preprocessing_num_workers": config["Dataset"].get("preprocessing_num_workers", 1),
                 "shuffle": True,
+                "max_length": config["Dataset"].get("max_length", 1024),
             },
             "lr_scheduler": {
                 "enable": True,

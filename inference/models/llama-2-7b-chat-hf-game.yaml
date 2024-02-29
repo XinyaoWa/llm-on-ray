@@ -1,0 +1,22 @@
+port: 8000
+name: llama-2-7b-chat-hf-game
+route_prefix: /llama-2-7b-chat-hf-game
+cpus_per_worker: 24
+gpus_per_worker: 0
+deepspeed: false
+workers_per_group: 2
+device: "cpu"
+ipex:
+  enabled: false
+  precision: bf16
+model_description:
+  model_id_or_path: ./models/Llama-2-7b-chat-hf-game
+  tokenizer_name_or_path: ./models/Llama-2-7b-chat-hf-game
+  chat_processor: ChatModelLLama
+  prompt:
+    intro: ""
+    human_id: ''
+    bot_id: ''
+    stop_words: []
+  config:
+    use_auth_token: ''

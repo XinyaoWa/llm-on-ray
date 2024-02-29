@@ -1,0 +1,34 @@
+General:
+  base_model: meta-llama/Llama-2-7b-chat-hf
+  gpt_base_model: false
+  output_dir: /tmp/llm-ray/Llama-2-7b-chat-hf-game-ray/output
+  checkpoint_dir: /tmp/llm-ray/Llama-2-7b-chat-hf-game-ray/checkpoint
+  tracking_dir: /tmp/llm-ray/Llama-2-7b-chat-hf-game-ray/tracking
+  config:
+    trust_remote_code: true
+    use_auth_token: null
+  lora_config:
+    task_type: CAUSAL_LM
+    r: 8
+    lora_alpha: 16
+    lora_dropout: 0.05
+Dataset:
+  train_file: ./dataset/viggo_ray/train.jsonl
+  validation_file: ./dataset/viggo_ray/valid.jsonl
+  validation_split_percentage: 0
+  max_length: 1600
+Training:
+  optimizer: AdamW
+  batch_size: 4
+  epochs: 1
+  learning_rate: 1.0e-04
+  lr_scheduler: linear
+  weight_decay: 0.0
+  mixed_precision: bf16
+  device: CPU
+  num_training_workers: 2
+  resources_per_worker:
+    CPU: 32
+  accelerate_mode: CPU_DDP
+  gradient_accumulation_steps: 2
+  logging_steps: 10

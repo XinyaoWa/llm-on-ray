@@ -1,0 +1,13 @@
+Please recommend 2 to 3 games according to the following requirements. 
+You should give your results after "##Output##", but don't include "##Output##" in your answer.
+Remember put each game and its description in one line, and do not give any other string except game description.
+
+Here is an example:
+##requirements##
+Can you recommend me some games on PC platform?
+##Output##
+The Witcher 3: Wild Hunt is an open-world action role-playing game with a thrilling storyline, engaging characters, and an expansive world to explore, which can be played on PC platform.
+Portal 2 is a PC game in first-person puzzle vision that challenges players to solve increasingly complex puzzles using a portal gun.
+
+Below is the requirements:
+##requirements##

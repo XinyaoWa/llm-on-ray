@@ -1,0 +1,44 @@
+Given a set of sentences, for each sentence construct its underlying meaning representation with several attributes and attribute values.
+
+The attributes must be one of the following: ['name', 'exp_release_date', 'release_year', 'developer', 'esrb', 'rating', 'genres', 'player_perspective', 'has_multiplayer', 'platforms', 'available_on_steam', 'has_linux_release', 'has_mac_release', 'specifier']. The order your list the attributes within the function must follow the order listed above. For example the 'name' attribute must always come  before the 'exp_release_date' attribute, and so forth.
+
+For each attribute, fill in the corresponding value of the attribute within brackets.
+
+Each input sentence will be given line by line (can skip empty line if there exists),  please also output the corresponding result line by line following the same order.
+
+Input sentences will be given after "##Input##", you are expected to output the result after "##Output##". Do not include "##Output##" in your result and do not give any other sentence except the required result.
+
+A couple of examples are below. 
+
+Example (1)
+##Input##
+Dirt: Showdown from 2012 is a sport racing game for the PlayStation, Xbox, PC rated E 10+ (for Everyone 10 and Older). It's not available on Steam, Linux, or Mac.
+##Output## 
+name[Dirt: Showdown], release_year[2012], esrb[E 10+ (for Everyone 10 and Older)], genres[driving/racing, sport], platforms[PlayStation, Xbox, PC], available_on_steam[no], has_linux_release[no], has_mac_release[no]
+
+Example (2)
+##Input##
+Were there even any terrible games in 2014?
+Adventure games that combine platforming and puzzles can be frustrating to play, but the side view perspective is perfect for them. That's why I enjoyed playing Little Nightmares.
+Since we're on the subject of games developed by Telltale Games, I'm wondering, have you played The Wolf Among Us?
+##Output##
+release_year[2014], specifier[terrible]
+name[Little Nightmares], rating[good], genres[adventure, platformer, puzzle], player_perspective[side view]
+name[The Wolf Among Us], developer[Telltale Games]
+
+Example (3)
+##Input##
+Layers of Fear, the indie first person point-and-click adventure game?
+I bet you like it when you can play games on Steam, like Worms: Reloaded, right?
+I recall you saying that you really enjoyed The Legend of Zelda: Ocarina of Time. Are you typically a big fan of games on Nintendo rated E (for Everyone)?
+So what is it about the games that were released in 2005 that you find so excellent?
+Do you think Mac is a better gaming platform than others?
+##Output##
+name[Layers of Fear], genres[adventure, indie, point-and-click], player_perspective[first person]
+name[Worms: Reloaded], available_on_steam[yes]
+name[The Legend of Zelda: Ocarina of Time], esrb[E (for Everyone)], rating[excellent], platforms[Nintendo]
+release_year[2005], rating[excellent]
+has_mac_release[]
+
+Give the output for the following sentences:
+##Input##

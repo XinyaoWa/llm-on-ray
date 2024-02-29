@@ -37,6 +37,7 @@ class Dataset(BaseModel):
     train_file: str
     validation_file: Optional[str]
     validation_split_percentage: int
+    max_length: int=1024
 
 
 class RayResourceConfig(BaseModel):
